@@ -25,6 +25,7 @@ from .utils import (
     escape_string,
 )
 from .parse import ContentLine, Container
+from .attendee import Attendee
 
 
 class Event(Component):
@@ -54,6 +55,7 @@ class Event(Component):
                  alarms=None,
                  categories=None,
                  status=None,
+                 attendees=None,
                  ):
         """Instantiates a new :class:`ics.event.Event`.
 
@@ -71,6 +73,7 @@ class Event(Component):
             alarms (:class:`ics.alarm.Alarm`)
             categories (set of string)
             status (string)
+            attendees (:class:`ics.attendee.Attendee`)
 
         Raises:
             ValueError: if `end` and `duration` are specified at the same time
@@ -87,6 +90,7 @@ class Event(Component):
         self.url = url
         self.transparent = transparent
         self.alarms = set()
+        self.attendees = set()
         self.categories = set()
         self._unused = Container(name='VEVENT')
 
@@ -108,6 +112,9 @@ class Event(Component):
 
         if categories is not None:
             self.categories.update(set(categories))
+
+        if attendees is not None:
+            self.attendees.update(set(attendees))
 
     def has_end(self):
         """
@@ -207,6 +214,9 @@ class Event(Component):
             self._end_time = None
 
         self._duration = value
+
+    def add_attendee(self, attendee):
+        self.attendees.add(attendee)
 
     @property
     def all_day(self):
@@ -523,6 +533,17 @@ def categories(event, line):
             event.categories.update({unescape_string(cat)})
 
 
+@Event._extracts('ATTENDEE')
+def attendee(event, line):
+    if line:
+        # skip the "mailto:" part to get only email
+        email = line.value[7:]
+        common_name = line.params.get('CN', [''])[0]
+        rsvp = line.params.get('RSVP', [None])[0]
+        a = Attendee(email=email, common_name=common_name, rsvp=rsvp)
+        event.add_attendee(a)
+
+
 # -------------------
 # ----- Outputs -----
 # -------------------
@@ -567,6 +588,12 @@ def o_end(event, container):
 def o_summary(event, container):
     if event.name:
         container.append(ContentLine('SUMMARY', value=escape_string(event.name)))
+
+
+@Event._outputs
+def o_attendee(event, container):
+    for attendee in event.attendees:
+        container.append(str(attendee))
 
 
 @Event._outputs

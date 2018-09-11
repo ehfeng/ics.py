@@ -2,6 +2,7 @@ import unittest
 import pytest
 from datetime import timedelta as td, datetime as dt
 import arrow
+from ics.attendee import Attendee
 from ics.event import Event
 from ics.icalendar import Calendar
 from ics.parse import Container
@@ -145,6 +146,43 @@ class TestEvent(unittest.TestCase):
         self.assertEqual(e5.end, arrow.get("1993/05/30T02:00"))
         self.assertEqual(e5.duration, td(hours=146))
 
+    def test_attendee(self):
+        a = Attendee(email='email@email.com')
+        line = str(a)
+        self.assertIn("ATTENDEE;CN=email@email.com", line)
+
+        a2 = Attendee(email='email@email.com', common_name='Email')
+        line = str(a2)
+        self.assertIn("ATTENDEE;CN=Email:mailto:email@email.com", line)
+
+        with self.assertRaises(ValueError):
+            Attendee(email=None)
+
+        with self.assertRaises(ValueError):
+            Attendee(email="test@test.com", common_name=5)
+
+        with self.assertRaises(ValueError):
+            Attendee(email="test@test.com", rsvp="lol")
+
+        b = Attendee(email="test@test.com", rsvp="TRUE")
+        self.assertTrue(b.rsvp)
+
+        b.rsvp = True
+        self.assertTrue(b.rsvp)
+
+        b.rsvp = "FALSE"
+        self.assertFalse(b.rsvp)
+
+        b.rsvp = False
+        self.assertFalse(b.rsvp)
+
+    def test_add_attendees(self):
+        e = Event()
+        a = Attendee(email='email@email.com')
+        e.add_attendee(a)
+        lines = str(e).splitlines()
+        self.assertIn("ATTENDEE;CN=email@email.com:mailto:email@email.com", lines)
+
     def test_always_uid(self):
         e = Event()
         e.uid = None
@@ -241,7 +279,7 @@ class TestEvent(unittest.TestCase):
     def test_category_output(self):
         cat = "Simple category"
         e = Event(name="Name", categories={cat})
-        self.assertIn("CATEGORIES:"+cat, str(e).splitlines())
+        self.assertIn("CATEGORIES:" + cat, str(e).splitlines())
 
     def test_all_day_with_end(self):
         c = Calendar(cal20)
@@ -402,3 +440,24 @@ class TestEvent(unittest.TestCase):
         event = Event(uid='0', name='Test #1', begin=dt(2016, 6, 10, 20, 10), duration=td(minutes=30))
         event.join(event)
         assert event == Event(uid='0', name='Test #1', begin=dt(2016, 6, 10, 20, 10), duration=td(minutes=30))
+
+    def test_event_attendee(self):
+        attendee_a = Attendee(email="test@test.com", common_name="Test", rsvp="TRUE")
+        attendee_b = Attendee(email="test2@test.com")
+        event_a = Event(name="Test #1", attendees={attendee_a, attendee_b})
+
+        text = str(event_a)
+
+        self.assertIn("ATTENDEE;CN=Test;RSVP=TRUE:mailto:test@test.com", text)
+        self.assertIn("ATTENDEE;CN=test2@test.com:mailto:test2@test.com", text)
+
+    def test_attendee_input(self):
+        c = Calendar(cal12)
+
+        self.assertEqual(len(c.events), 1)
+        self.assertEqual(len(c.events[0].attendees), 1)
+        a = c.events[0].attendees.pop()
+
+        self.assertEqual(a.email, "test@test.com")
+        self.assertEqual(a.common_name, "test")
+        self.assertFalse(a.rsvp)
